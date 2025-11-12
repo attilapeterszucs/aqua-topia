@@ -9,21 +9,22 @@
   become: true
 
 - name: Reload systemd user daemon
-  ansible.builtin.systemd:
-    daemon_reload: true
-    scope: user
+  ansible.builtin.shell: |
+    export XDG_RUNTIME_DIR="/run/user/$(id -u {{ app_user }})"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u {{ app_user }})/bus"
+    systemctl --user daemon-reload
+  become: true
   become_user: "{{ app_user }}"
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/1000"
+  failed_when: false
 
 - name: Restart aqua-topia-app
-  ansible.builtin.systemd:
-    name: "{{ systemd_service_name }}"
-    state: restarted
-    scope: user
+  ansible.builtin.shell: |
+    export XDG_RUNTIME_DIR="/run/user/$(id -u {{ app_user }})"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u {{ app_user }})/bus"
+    systemctl --user restart {{ systemd_service_name }}
+  become: true
   become_user: "{{ app_user }}"
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/1000"
+  failed_when: false
 
 - name: Restart certbot timer
   ansible.builtin.systemd:
