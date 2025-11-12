@@ -5,31 +5,51 @@
 # ============================================
 # Package Installation
 # ============================================
-- name: Install EPEL repository
+- name: Check if system is RHEL/CentOS
+  ansible.builtin.stat:
+    path: /etc/redhat-release
+  register: redhat_release
+  tags:
+    - packages
+
+- name: Install EPEL repository (RHEL/CentOS)
   ansible.builtin.dnf:
     name: epel-release
     state: present
+  ignore_errors: true
+  register: epel_pkg_install
   tags:
     - packages
     - repos
 
-- name: Install Podman and system dependencies (without certbot)
+- name: Install EPEL repository via RPM (if package method failed)
+  ansible.builtin.dnf:
+    name: https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+    state: present
+    disable_gpg_check: true
+  when: epel_pkg_install.failed
+  ignore_errors: true
+  register: epel_rpm_install
+  tags:
+    - packages
+    - repos
+
+- name: Install Podman and system dependencies
   ansible.builtin.dnf:
     name:
       - podman
       - skopeo
       - firewalld
       - policycoreutils-python-utils  # For SELinux management
-      - python3-pip  # For fallback certbot installation
+      - python3-pip  # For certbot installation
     state: present
   tags:
     - packages
 
-- name: Install certbot from EPEL
+- name: Install certbot from repositories
   ansible.builtin.dnf:
     name:
       - certbot
-      - python3-certbot
     state: present
   ignore_errors: true
   register: certbot_install
@@ -41,9 +61,9 @@
   ansible.builtin.pip:
     name:
       - certbot
-    extra_args: --user
-  become_user: "{{ app_user }}"
-  when: certbot_install.failed
+    state: present
+  when: certbot_install.failed or certbot_install.rc != 0
+  ignore_errors: true
   tags:
     - packages
     - certbot
