@@ -104,6 +104,17 @@
   tags:
     - registry
 
+- name: Create containers config directory
+  ansible.builtin.file:
+    path: "/home/{{ app_user }}/.config/containers"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0755'
+  tags:
+    - podman
+    - config
+
 - name: Configure container storage for performance
   ansible.builtin.copy:
     dest: "/home/{{ app_user }}/.config/containers/storage.conf"
