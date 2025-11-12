@@ -31,11 +31,17 @@
     # Firewall Configuration for HTTP-01 Challenge
     # ============================================
     - name: Ensure firewalld allows HTTP for ACME challenge
-      ansible.posix.firewalld:
-        port: "{{ http_port }}/tcp"
-        permanent: true
-        state: enabled
-        immediate: true
+      ansible.builtin.command: firewall-cmd --permanent --add-port={{ http_port }}/tcp
+      register: acme_port_result
+      changed_when: "'success' in acme_port_result.stdout or acme_port_result.rc == 0"
+      failed_when: false
+      tags:
+        - firewall
+        - certbot
+
+    - name: Reload firewalld for ACME port
+      ansible.builtin.command: firewall-cmd --reload
+      when: acme_port_result.changed
       tags:
         - firewall
         - certbot

@@ -60,11 +60,12 @@
     - containers
 
 - name: Pull container image from registry
-  containers.podman.podman_image:
-    name: "{{ container_image }}:{{ container_tag }}"
-    state: present
+  ansible.builtin.command: podman pull {{ container_image }}:{{ container_tag }}
   become_user: "{{ app_user }}"
   when: registry_status.rc == 0
+  register: podman_pull_result
+  changed_when: "'Downloaded newer image' in podman_pull_result.stdout or 'Pulling' in podman_pull_result.stderr"
+  failed_when: podman_pull_result.rc != 0
   tags:
     - containers
 
@@ -119,22 +120,26 @@
     - firewall
 
 - name: Configure firewalld ports for Aqua Topia
-  ansible.posix.firewalld:
-    port: "{{ item }}"
-    permanent: true
-    state: enabled
-    immediate: true
+  ansible.builtin.command: firewall-cmd --permanent --add-port={{ item }}
   loop: "{{ firewall_ports }}"
+  register: firewall_port_result
+  changed_when: firewall_port_result.rc == 0
+  failed_when: false
   notify: Reload firewalld
   tags:
     - firewall
 
+- name: Reload firewalld to apply port changes
+  ansible.builtin.command: firewall-cmd --reload
+  when: firewall_port_result.changed
+  tags:
+    - firewall
+
 - name: Add rich rule for subnet access
-  ansible.posix.firewalld:
-    rich_rule: "rule family='ipv4' source address='{{ subnet }}' accept"
-    permanent: true
-    state: enabled
-    immediate: true
+  ansible.builtin.command: firewall-cmd --permanent --add-rich-rule="rule family='ipv4' source address='{{ subnet }}' accept"
+  register: rich_rule_result
+  changed_when: rich_rule_result.rc == 0
+  failed_when: false
   notify: Reload firewalld
   tags:
     - firewall
@@ -156,24 +161,39 @@
     - selinux
 
 - name: Set SELinux to enforcing mode
-  ansible.posix.selinux:
-    policy: "{{ selinux_policy }}"
-    state: "{{ selinux_state }}"
-  when: selinux_state == "enforcing"
+  ansible.builtin.command: setenforce 1
+  when:
+    - selinux_state == "enforcing"
+    - current_selinux.stdout != "Enforcing"
+  register: selinux_enforce_result
+  changed_when: selinux_enforce_result.rc == 0
+  failed_when: false
   tags:
     - selinux
 
 - name: Set SELinux to permissive mode (if configured)
-  ansible.posix.selinux:
-    policy: "{{ selinux_policy }}"
-    state: "{{ selinux_state }}"
-  when: selinux_state == "permissive"
+  ansible.builtin.command: setenforce 0
+  when:
+    - selinux_state == "permissive"
+    - current_selinux.stdout != "Permissive"
+  register: selinux_permissive_result
+  changed_when: selinux_permissive_result.rc == 0
+  failed_when: false
   tags:
     - selinux
 
-- name: Set SELinux to disabled (if configured)
-  ansible.posix.selinux:
-    state: disabled
+- name: Set SELinux to disabled in config (if configured)
+  ansible.builtin.lineinfile:
+    path: /etc/selinux/config
+    regexp: '^SELINUX='
+    line: 'SELINUX=disabled'
+  when: selinux_state == "disabled"
+  tags:
+    - selinux
+
+- name: Warn about SELinux disabled requiring reboot
+  ansible.builtin.debug:
+    msg: "WARNING: SELinux disabled state requires a system reboot to take effect"
   when: selinux_state == "disabled"
   tags:
     - selinux

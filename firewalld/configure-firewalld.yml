@@ -65,36 +65,30 @@
     # Configure Ports
     # ============================================
     - name: Enable HTTP port (80/tcp)
-      ansible.posix.firewalld:
-        port: "80/tcp"
-        permanent: true
-        state: enabled
-        immediate: true
-        zone: "{{ default_zone }}"
+      ansible.builtin.command: firewall-cmd --permanent --zone={{ default_zone }} --add-port=80/tcp
+      register: http_port_result
+      changed_when: "'success' in http_port_result.stdout or http_port_result.rc == 0"
+      failed_when: false
       notify: Reload firewalld
       tags:
         - firewall
         - ports
 
     - name: Enable HTTPS port (443/tcp)
-      ansible.posix.firewalld:
-        port: "443/tcp"
-        permanent: true
-        state: enabled
-        immediate: true
-        zone: "{{ default_zone }}"
+      ansible.builtin.command: firewall-cmd --permanent --zone={{ default_zone }} --add-port=443/tcp
+      register: https_port_result
+      changed_when: "'success' in https_port_result.stdout or https_port_result.rc == 0"
+      failed_when: false
       notify: Reload firewalld
       tags:
         - firewall
         - ports
 
     - name: Enable application port (8080/tcp)
-      ansible.posix.firewalld:
-        port: "8080/tcp"
-        permanent: true
-        state: enabled
-        immediate: true
-        zone: "{{ default_zone }}"
+      ansible.builtin.command: firewall-cmd --permanent --zone={{ default_zone }} --add-port=8080/tcp
+      register: app_port_result
+      changed_when: "'success' in app_port_result.stdout or app_port_result.rc == 0"
+      failed_when: false
       notify: Reload firewalld
       tags:
         - firewall
@@ -104,24 +98,20 @@
     # Configure Services
     # ============================================
     - name: Enable HTTP service
-      ansible.posix.firewalld:
-        service: http
-        permanent: true
-        state: enabled
-        immediate: true
-        zone: "{{ default_zone }}"
+      ansible.builtin.command: firewall-cmd --permanent --zone={{ default_zone }} --add-service=http
+      register: http_service_result
+      changed_when: "'success' in http_service_result.stdout or http_service_result.rc == 0"
+      failed_when: false
       notify: Reload firewalld
       tags:
         - firewall
         - services
 
     - name: Enable HTTPS service
-      ansible.posix.firewalld:
-        service: https
-        permanent: true
-        state: enabled
-        immediate: true
-        zone: "{{ default_zone }}"
+      ansible.builtin.command: firewall-cmd --permanent --zone={{ default_zone }} --add-service=https
+      register: https_service_result
+      changed_when: "'success' in https_service_result.stdout or https_service_result.rc == 0"
+      failed_when: false
       notify: Reload firewalld
       tags:
         - firewall
@@ -131,24 +121,20 @@
     # Rich Rules for Subnet Access
     # ============================================
     - name: Add rich rule for Team 8 subnet access
-      ansible.posix.firewalld:
-        rich_rule: "rule family='ipv4' source address='{{ subnet }}' accept"
-        permanent: true
-        state: enabled
-        immediate: true
-        zone: "{{ default_zone }}"
+      ansible.builtin.command: firewall-cmd --permanent --zone={{ default_zone }} --add-rich-rule="rule family='ipv4' source address='{{ subnet }}' accept"
+      register: subnet_rule_result
+      changed_when: "'success' in subnet_rule_result.stdout or subnet_rule_result.rc == 0"
+      failed_when: false
       notify: Reload firewalld
       tags:
         - firewall
         - rich-rules
 
     - name: Add rich rule for SSH access from subnet
-      ansible.posix.firewalld:
-        rich_rule: "rule family='ipv4' source address='{{ subnet }}' service name='ssh' accept"
-        permanent: true
-        state: enabled
-        immediate: true
-        zone: "{{ default_zone }}"
+      ansible.builtin.command: firewall-cmd --permanent --zone={{ default_zone }} --add-rich-rule="rule family='ipv4' source address='{{ subnet }}' service name='ssh' accept"
+      register: ssh_rule_result
+      changed_when: "'success' in ssh_rule_result.stdout or ssh_rule_result.rc == 0"
+      failed_when: false
       notify: Reload firewalld
       tags:
         - firewall
@@ -159,12 +145,10 @@
     # Logging (Optional)
     # ============================================
     - name: Enable logging for denied packets
-      ansible.posix.firewalld:
-        rich_rule: "rule family='ipv4' log prefix='FIREWALL-DENIED: ' level='info' limit value='5/m' drop"
-        permanent: true
-        state: enabled
-        immediate: true
-        zone: "{{ default_zone }}"
+      ansible.builtin.command: firewall-cmd --permanent --zone={{ default_zone }} --add-rich-rule="rule family='ipv4' log prefix='FIREWALL-DENIED:' level='info' limit value='5/m' drop"
+      register: logging_rule_result
+      changed_when: "'success' in logging_rule_result.stdout or logging_rule_result.rc == 0"
+      failed_when: false
       notify: Reload firewalld
       tags:
         - firewall
