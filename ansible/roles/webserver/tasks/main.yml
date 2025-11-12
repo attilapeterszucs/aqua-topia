@@ -5,18 +5,48 @@
 # ============================================
 # Package Installation
 # ============================================
-- name: Install Podman and system dependencies
+- name: Install EPEL repository
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+  tags:
+    - packages
+    - repos
+
+- name: Install Podman and system dependencies (without certbot)
   ansible.builtin.dnf:
     name:
       - podman
       - skopeo
       - firewalld
-      - certbot
-      - python3-certbot
       - policycoreutils-python-utils  # For SELinux management
+      - python3-pip  # For fallback certbot installation
     state: present
   tags:
     - packages
+
+- name: Install certbot from EPEL
+  ansible.builtin.dnf:
+    name:
+      - certbot
+      - python3-certbot
+    state: present
+  ignore_errors: true
+  register: certbot_install
+  tags:
+    - packages
+    - certbot
+
+- name: Install certbot via pip if package installation failed
+  ansible.builtin.pip:
+    name:
+      - certbot
+    extra_args: --user
+  become_user: "{{ app_user }}"
+  when: certbot_install.failed
+  tags:
+    - packages
+    - certbot
 
 # ============================================
 # User Configuration
