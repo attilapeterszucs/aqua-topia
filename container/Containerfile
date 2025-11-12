@@ -1,0 +1,110 @@
+# HTF 2025 Team 8 - Aqua Topia Container Image
+# Multi-stage build for optimized production deployment
+
+# ============================================
+# Stage 1: Build Stage
+# ============================================
+FROM registry.access.redhat.com/ubi9/ubi:latest AS builder
+
+# Install build dependencies
+RUN dnf install -y \
+    nodejs \
+    npm \
+    python3 \
+    python3-pip \
+    git \
+    gcc \
+    make \
+    && dnf clean all
+
+# Set working directory
+WORKDIR /build
+
+# Copy application source
+# NOTE: In production, copy actual source code here
+# Example structure:
+# COPY backend/ /build/backend/
+# COPY frontend/ /build/frontend/
+# COPY package*.json /build/
+
+# Install dependencies and build
+# RUN npm ci --only=production
+# RUN npm run build
+
+# Placeholder for demonstration
+RUN mkdir -p /build/app && \
+    echo '{"name": "aqua-topia", "version": "1.0.0"}' > /build/app/package.json
+
+# ============================================
+# Stage 2: Runtime Stage
+# ============================================
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+
+# Metadata labels
+LABEL maintainer="Team 8 HTF 2025" \
+      application="Aqua Topia" \
+      version="1.0.0" \
+      description="HTF 2025 Team 8 Application - Aqua Topia" \
+      io.openshift.expose-services="8080:http" \
+      io.k8s.description="Aqua Topia application for HTF 2025"
+
+# Install runtime dependencies
+RUN microdnf install -y \
+    nodejs \
+    python3 \
+    shadow-utils \
+    && microdnf clean all
+
+# Create non-root user for security
+RUN useradd -r -u 1001 -g 0 -m -d /app -s /sbin/nologin \
+    -c "Aqua Topia Application User" aqua-user
+
+# Set working directory
+WORKDIR /app
+
+# Copy built artifacts from builder stage
+COPY --from=builder --chown=1001:0 /build/app /app
+
+# Copy application files (in production environment)
+# COPY --chown=1001:0 server.js /app/
+# COPY --chown=1001:0 public/ /app/public/
+# COPY --chown=1001:0 config/ /app/config/
+
+# Create placeholder application
+RUN echo '#!/usr/bin/env node' > /app/server.js && \
+    echo 'const http = require("http");' >> /app/server.js && \
+    echo 'const server = http.createServer((req, res) => {' >> /app/server.js && \
+    echo '  if (req.url === "/health") {' >> /app/server.js && \
+    echo '    res.writeHead(200, {"Content-Type": "application/json"});' >> /app/server.js && \
+    echo '    res.end(JSON.stringify({status: "healthy", app: "Aqua Topia", team: 8}));' >> /app/server.js && \
+    echo '  } else {' >> /app/server.js && \
+    echo '    res.writeHead(200, {"Content-Type": "text/html"});' >> /app/server.js && \
+    echo '    res.end("<h1>Aqua Topia - Team 8 HTF 2025</h1>");' >> /app/server.js && \
+    echo '  }' >> /app/server.js && \
+    echo '});' >> /app/server.js && \
+    echo 'server.listen(8080, "0.0.0.0", () => console.log("Server running on port 8080"));' >> /app/server.js && \
+    chmod +x /app/server.js && \
+    chown 1001:0 /app/server.js
+
+# Set proper permissions for OpenShift compatibility
+RUN chgrp -R 0 /app && \
+    chmod -R g=u /app
+
+# Switch to non-root user
+USER 1001
+
+# Expose application port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+# Set environment variables
+ENV NODE_ENV=production \
+    PORT=8080 \
+    TEAM_NUMBER=8 \
+    APP_NAME="Aqua Topia"
+
+# Start application
+CMD ["/app/server.js"]

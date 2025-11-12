@@ -1,0 +1,226 @@
+---
+# HTF 2025 Team 8 - Certbot Setup and TLS Certificate Automation
+# This playbook configures Let's Encrypt certificates with automatic renewal
+
+- name: Setup Certbot and Let's Encrypt Certificates
+  hosts: webserver
+  become: true
+  vars:
+    certbot_email: "team8@htf25.qubr.be"
+    domain: "www8.htf25.qubr.be"
+    cert_path: "/etc/letsencrypt/live/{{ domain }}"
+    http_port: 80
+
+  tasks:
+    # ============================================
+    # Install Certbot
+    # ============================================
+    - name: Install Certbot and dependencies
+      ansible.builtin.dnf:
+        name:
+          - certbot
+          - python3-certbot
+          - python3-certbot-nginx  # Optional: for nginx integration
+          - python3-certbot-apache  # Optional: for apache integration
+        state: present
+      tags:
+        - install
+        - certbot
+
+    # ============================================
+    # Firewall Configuration for HTTP-01 Challenge
+    # ============================================
+    - name: Ensure firewalld allows HTTP for ACME challenge
+      ansible.posix.firewalld:
+        port: "{{ http_port }}/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+      tags:
+        - firewall
+        - certbot
+
+    # ============================================
+    # Stop any service on port 80 temporarily
+    # ============================================
+    - name: Check if port 80 is in use
+      ansible.builtin.wait_for:
+        port: "{{ http_port }}"
+        state: stopped
+        timeout: 5
+      ignore_errors: true
+      register: port_check
+      tags:
+        - certbot
+
+    # ============================================
+    # Request Certificate
+    # ============================================
+    - name: Request Let's Encrypt certificate via HTTP-01 challenge
+      ansible.builtin.command: >
+        certbot certonly
+        --standalone
+        --non-interactive
+        --agree-tos
+        --email {{ certbot_email }}
+        --domains {{ domain }}
+        --http-01-port {{ http_port }}
+        --preferred-challenges http-01
+        --keep-until-expiring
+        --expand
+      args:
+        creates: "{{ cert_path }}/fullchain.pem"
+      register: certbot_result
+      tags:
+        - certbot
+        - certificate
+
+    - name: Display certificate request result
+      ansible.builtin.debug:
+        var: certbot_result.stdout_lines
+      when: certbot_result.changed
+      tags:
+        - certbot
+
+    # ============================================
+    # Verify Certificate
+    # ============================================
+    - name: Verify certificate files exist
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ cert_path }}/fullchain.pem"
+        - "{{ cert_path }}/privkey.pem"
+        - "{{ cert_path }}/cert.pem"
+        - "{{ cert_path }}/chain.pem"
+      register: cert_files
+      tags:
+        - verify
+        - certbot
+
+    - name: Display certificate file status
+      ansible.builtin.debug:
+        msg: "{{ item.item }} - {{ 'EXISTS' if item.stat.exists else 'MISSING' }}"
+      loop: "{{ cert_files.results }}"
+      tags:
+        - verify
+
+    # ============================================
+    # Configure Automatic Renewal
+    # ============================================
+    - name: Create certbot renewal configuration
+      ansible.builtin.copy:
+        dest: /etc/letsencrypt/renewal/{{ domain }}.conf
+        content: |
+          # HTF 2025 Team 8 - Certbot Renewal Configuration
+          version = 1.21.0
+          archive_dir = /etc/letsencrypt/archive/{{ domain }}
+          cert = {{ cert_path }}/cert.pem
+          privkey = {{ cert_path }}/privkey.pem
+          chain = {{ cert_path }}/chain.pem
+          fullchain = {{ cert_path }}/fullchain.pem
+
+          # Options used in the renewal process
+          [renewalparams]
+          account = {{ certbot_email }}
+          authenticator = standalone
+          server = https://acme-v02.api.letsencrypt.org/directory
+          preferred_challenges = http-01
+          http01_port = {{ http_port }}
+        mode: '0644'
+      tags:
+        - renewal
+        - certbot
+
+    - name: Create certbot renewal systemd timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/certbot-renew.timer
+        content: |
+          [Unit]
+          Description=Certbot Renewal Timer for HTF 2025 Team 8
+          Documentation=https://certbot.eff.org/docs/
+
+          [Timer]
+          OnCalendar=*-*-* 00,12:00:00
+          RandomizedDelaySec=3600
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+        mode: '0644'
+      notify: Reload systemd
+      tags:
+        - renewal
+        - systemd
+
+    - name: Create certbot renewal systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/certbot-renew.service
+        content: |
+          [Unit]
+          Description=Certbot Renewal Service for HTF 2025 Team 8
+          Documentation=https://certbot.eff.org/docs/
+          After=network-online.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx || systemctl reload httpd || true"
+          PrivateTmp=true
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+      notify: Reload systemd
+      tags:
+        - renewal
+        - systemd
+
+    - name: Enable and start certbot renewal timer
+      ansible.builtin.systemd:
+        name: certbot-renew.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      tags:
+        - renewal
+        - systemd
+
+    # ============================================
+    # Test Renewal
+    # ============================================
+    - name: Test certificate renewal process
+      ansible.builtin.command: certbot renew --dry-run
+      register: renewal_test
+      changed_when: false
+      failed_when: false
+      tags:
+        - test
+        - renewal
+
+    - name: Display renewal test results
+      ansible.builtin.debug:
+        var: renewal_test.stdout_lines
+      when: renewal_test.rc == 0
+      tags:
+        - test
+
+    # ============================================
+    # Certificate Information
+    # ============================================
+    - name: Get certificate information
+      ansible.builtin.command: certbot certificates
+      register: cert_info
+      changed_when: false
+      tags:
+        - info
+
+    - name: Display certificate information
+      ansible.builtin.debug:
+        var: cert_info.stdout_lines
+      tags:
+        - info
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true

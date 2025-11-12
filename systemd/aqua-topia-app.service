@@ -1,0 +1,61 @@
+# HTF 2025 Team 8 - Aqua Topia Rootless Systemd Service
+# Generated for rootless Podman container deployment
+# Install to: ~/.config/systemd/user/aqua-topia-app.service
+
+[Unit]
+Description=Aqua Topia Application Container (Team 8 HTF 2025)
+Documentation=https://github.com/htf25-team8/aqua-topia
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=%h/.local/share/containers/storage
+
+[Service]
+Type=exec
+Restart=always
+RestartSec=10
+TimeoutStartSec=300
+TimeoutStopSec=70
+
+# Environment variables
+Environment="PODMAN_SYSTEMD_UNIT=%n"
+Environment="TEAM_NUMBER=8"
+Environment="SUBNET=10.1.8.0/24"
+Environment="APP_PORT=8080"
+
+# Pre-start: Clean up any existing container with same name
+ExecStartPre=/usr/bin/podman rm -f aqua-topia-app || true
+
+# Start command: Run rootless container
+ExecStart=/usr/bin/podman run \
+    --name aqua-topia-app \
+    --rm \
+    --log-driver journald \
+    --cgroups=no-conmon \
+    --sdnotify=conmon \
+    --replace \
+    --detach=false \
+    --publish 8080:8080 \
+    --env TEAM_NUMBER=8 \
+    --env NODE_ENV=production \
+    --health-cmd='curl -f http://localhost:8080/health || exit 1' \
+    --health-interval=30s \
+    --health-timeout=3s \
+    --health-retries=3 \
+    quay.io/htf25-team8/aqua-topia:latest
+
+# Stop command
+ExecStop=/usr/bin/podman stop --ignore --time 10 aqua-topia-app
+
+# Cleanup on stop
+ExecStopPost=/usr/bin/podman rm -f aqua-topia-app || true
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+MemoryLimit=1G
+CPUQuota=200%
+
+[Install]
+WantedBy=default.target

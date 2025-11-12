@@ -1,0 +1,32 @@
+---
+# Webserver Handlers
+# Triggered by configuration changes
+
+- name: Reload firewalld
+  ansible.builtin.systemd:
+    name: firewalld
+    state: reloaded
+  become: true
+
+- name: Reload systemd user daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+    scope: user
+  become_user: "{{ app_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/1000"
+
+- name: Restart aqua-topia-app
+  ansible.builtin.systemd:
+    name: "{{ systemd_service_name }}"
+    state: restarted
+    scope: user
+  become_user: "{{ app_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/1000"
+
+- name: Restart certbot timer
+  ansible.builtin.systemd:
+    name: certbot-renew.timer
+    state: restarted
+  become: true

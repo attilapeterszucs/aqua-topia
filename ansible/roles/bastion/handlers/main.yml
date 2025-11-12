@@ -1,0 +1,10 @@
+---
+# Bastion Host Handlers
+# Minimal handlers for bastion configuration
+
+- name: Restart podman
+  ansible.builtin.systemd:
+    name: podman
+    state: restarted
+  become: true
+  listen: "restart podman service"

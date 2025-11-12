@@ -1,0 +1,82 @@
+---
+# HTF 2025 Team 8 - Aqua Topia Deployment Playbook
+# This playbook orchestrates the complete deployment of Aqua Topia application
+# across bastion and webserver infrastructure
+
+- name: Configure Bastion Host
+  hosts: bastion
+  become: true
+  tags:
+    - bastion
+    - setup
+  roles:
+    - bastion
+
+- name: Configure Webserver Host
+  hosts: webserver
+  become: true
+  tags:
+    - webserver
+    - setup
+  roles:
+    - webserver
+
+- name: Verify Deployment
+  hosts: webserver
+  become: false
+  tags:
+    - verify
+    - never
+  tasks:
+    - name: Check if container is running
+      ansible.builtin.command: podman ps --filter "name={{ app_name }}" --format "{{ '{{' }}.Names{{ '}}' }}"
+      register: container_status
+      changed_when: false
+      become_user: "{{ app_user }}"
+
+    - name: Display container status
+      ansible.builtin.debug:
+        msg: "Container '{{ app_name }}' is {{ 'running' if app_name in container_status.stdout else 'NOT running' }}"
+
+    - name: Check TLS certificate
+      ansible.builtin.stat:
+        path: "{{ cert_path }}/fullchain.pem"
+      register: cert_file
+      become: true
+
+    - name: Display certificate status
+      ansible.builtin.debug:
+        msg: "TLS certificate {{ 'exists' if cert_file.stat.exists else 'NOT found' }} at {{ cert_path }}"
+
+    - name: Check firewalld rules
+      ansible.builtin.command: firewall-cmd --list-ports
+      register: firewall_rules
+      changed_when: false
+      become: true
+
+    - name: Display firewall status
+      ansible.builtin.debug:
+        msg: "Active firewall ports: {{ firewall_rules.stdout }}"
+
+    - name: Check SELinux status
+      ansible.builtin.command: getenforce
+      register: selinux_status
+      changed_when: false
+      become: true
+
+    - name: Display SELinux status
+      ansible.builtin.debug:
+        msg: "SELinux is {{ selinux_status.stdout }}"
+
+    - name: Test application endpoint
+      ansible.builtin.uri:
+        url: "http://localhost:{{ app_port }}/health"
+        method: GET
+        status_code: [200, 404]  # 404 if health endpoint not implemented
+      register: health_check
+      failed_when: false
+      become_user: "{{ app_user }}"
+
+    - name: Display health check result
+      ansible.builtin.debug:
+        msg: "Application health check: {{ health_check.status | default('unreachable') }}"

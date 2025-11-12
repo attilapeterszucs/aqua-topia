@@ -1,0 +1,52 @@
+---
+# HTF 2025 Team 8 - Aqua Topia Global Variables
+
+# Team Configuration
+team_number: 8
+subnet: "10.1.8.0/24"
+bastion_ip: "10.1.8.4"
+webserver_ip: "10.1.8.5"
+
+# Container Registry
+container_registry: "quay.io"
+registry_namespace: "htf25-team8"
+app_name: "aqua-topia"
+container_image: "{{ container_registry }}/{{ registry_namespace }}/{{ app_name }}"
+container_tag: "latest"
+
+# Domain Configuration
+domain: "www8.htf25.qubr.be"
+bastion_domain: "bastion8.htf25.qubr.be"
+
+# Application Configuration
+app_port: 8080
+http_port: 80
+https_port: 443
+
+# User Configuration
+app_user: "hacker"
+app_group: "hacker"
+
+# TLS Configuration (Mozilla Modern Profile)
+mozilla_tls_profile: "modern"
+tls_version: "1.3"
+certbot_email: "team8@htf25.qubr.be"
+cert_path: "/etc/letsencrypt/live/{{ domain }}"
+
+# Firewall Ports
+firewall_ports:
+  - "80/tcp"
+  - "443/tcp"
+  - "8080/tcp"
+
+# SELinux Configuration
+selinux_state: "enforcing"  # Can be: enforcing, permissive, disabled
+selinux_policy: "targeted"
+
+# Systemd Service
+systemd_service_name: "aqua-topia-app"
+systemd_user_dir: "/home/{{ app_user }}/.config/systemd/user"
+container_storage_dir: "/home/{{ app_user }}/.local/share/containers/storage"
+
+# Proxy Configuration Directory
+proxy_config_dir: "/etc/aqua-topia-proxy"

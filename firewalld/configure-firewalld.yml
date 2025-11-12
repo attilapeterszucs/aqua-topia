@@ -1,0 +1,274 @@
+---
+# HTF 2025 Team 8 - Firewalld Configuration
+# Configures firewall rules for Aqua Topia application
+
+- name: Configure Firewalld for Aqua Topia
+  hosts: webserver
+  become: true
+  vars:
+    subnet: "10.1.8.0/24"
+    firewall_ports:
+      - "80/tcp"    # HTTP for Let's Encrypt challenges
+      - "443/tcp"   # HTTPS for application access
+      - "8080/tcp"  # Direct application access
+    firewall_services:
+      - http
+      - https
+    default_zone: public
+
+  tasks:
+    # ============================================
+    # Install and Enable Firewalld
+    # ============================================
+    - name: Install firewalld
+      ansible.builtin.dnf:
+        name: firewalld
+        state: present
+      tags:
+        - install
+        - firewall
+
+    - name: Ensure firewalld service is enabled and running
+      ansible.builtin.systemd:
+        name: firewalld
+        state: started
+        enabled: true
+      tags:
+        - firewall
+
+    - name: Wait for firewalld to be ready
+      ansible.builtin.wait_for:
+        timeout: 5
+      tags:
+        - firewall
+
+    # ============================================
+    # Set Default Zone
+    # ============================================
+    - name: Get current default zone
+      ansible.builtin.command: firewall-cmd --get-default-zone
+      register: current_zone
+      changed_when: false
+      tags:
+        - firewall
+        - zone
+
+    - name: Set default zone to public
+      ansible.builtin.command: firewall-cmd --set-default-zone={{ default_zone }}
+      when: current_zone.stdout != default_zone
+      notify: Reload firewalld
+      tags:
+        - firewall
+        - zone
+
+    # ============================================
+    # Configure Ports
+    # ============================================
+    - name: Enable HTTP port (80/tcp)
+      ansible.posix.firewalld:
+        port: "80/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+        zone: "{{ default_zone }}"
+      notify: Reload firewalld
+      tags:
+        - firewall
+        - ports
+
+    - name: Enable HTTPS port (443/tcp)
+      ansible.posix.firewalld:
+        port: "443/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+        zone: "{{ default_zone }}"
+      notify: Reload firewalld
+      tags:
+        - firewall
+        - ports
+
+    - name: Enable application port (8080/tcp)
+      ansible.posix.firewalld:
+        port: "8080/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+        zone: "{{ default_zone }}"
+      notify: Reload firewalld
+      tags:
+        - firewall
+        - ports
+
+    # ============================================
+    # Configure Services
+    # ============================================
+    - name: Enable HTTP service
+      ansible.posix.firewalld:
+        service: http
+        permanent: true
+        state: enabled
+        immediate: true
+        zone: "{{ default_zone }}"
+      notify: Reload firewalld
+      tags:
+        - firewall
+        - services
+
+    - name: Enable HTTPS service
+      ansible.posix.firewalld:
+        service: https
+        permanent: true
+        state: enabled
+        immediate: true
+        zone: "{{ default_zone }}"
+      notify: Reload firewalld
+      tags:
+        - firewall
+        - services
+
+    # ============================================
+    # Rich Rules for Subnet Access
+    # ============================================
+    - name: Add rich rule for Team 8 subnet access
+      ansible.posix.firewalld:
+        rich_rule: "rule family='ipv4' source address='{{ subnet }}' accept"
+        permanent: true
+        state: enabled
+        immediate: true
+        zone: "{{ default_zone }}"
+      notify: Reload firewalld
+      tags:
+        - firewall
+        - rich-rules
+
+    - name: Add rich rule for SSH access from subnet
+      ansible.posix.firewalld:
+        rich_rule: "rule family='ipv4' source address='{{ subnet }}' service name='ssh' accept"
+        permanent: true
+        state: enabled
+        immediate: true
+        zone: "{{ default_zone }}"
+      notify: Reload firewalld
+      tags:
+        - firewall
+        - rich-rules
+        - ssh
+
+    # ============================================
+    # Logging (Optional)
+    # ============================================
+    - name: Enable logging for denied packets
+      ansible.posix.firewalld:
+        rich_rule: "rule family='ipv4' log prefix='FIREWALL-DENIED: ' level='info' limit value='5/m' drop"
+        permanent: true
+        state: enabled
+        immediate: true
+        zone: "{{ default_zone }}"
+      notify: Reload firewalld
+      tags:
+        - firewall
+        - logging
+        - optional
+
+    # ============================================
+    # Verification
+    # ============================================
+    - name: List all active ports
+      ansible.builtin.command: firewall-cmd --list-ports
+      register: active_ports
+      changed_when: false
+      tags:
+        - verify
+        - firewall
+
+    - name: Display active ports
+      ansible.builtin.debug:
+        msg: "Active firewall ports: {{ active_ports.stdout }}"
+      tags:
+        - verify
+
+    - name: List all active services
+      ansible.builtin.command: firewall-cmd --list-services
+      register: active_services
+      changed_when: false
+      tags:
+        - verify
+        - firewall
+
+    - name: Display active services
+      ansible.builtin.debug:
+        msg: "Active firewall services: {{ active_services.stdout }}"
+      tags:
+        - verify
+
+    - name: List all rich rules
+      ansible.builtin.command: firewall-cmd --list-rich-rules
+      register: rich_rules
+      changed_when: false
+      tags:
+        - verify
+        - firewall
+
+    - name: Display rich rules
+      ansible.builtin.debug:
+        msg: "Active rich rules: {{ rich_rules.stdout_lines }}"
+      tags:
+        - verify
+
+    - name: Get firewalld runtime configuration
+      ansible.builtin.command: firewall-cmd --list-all
+      register: firewall_config
+      changed_when: false
+      tags:
+        - verify
+        - firewall
+
+    - name: Display complete firewall configuration
+      ansible.builtin.debug:
+        var: firewall_config.stdout_lines
+      tags:
+        - verify
+
+    # ============================================
+    # Security Hardening (Optional)
+    # ============================================
+    - name: Disable unused zones
+      ansible.builtin.command: firewall-cmd --permanent --delete-zone={{ item }}
+      loop:
+        - dmz
+        - work
+        - home
+        - internal
+      failed_when: false
+      notify: Reload firewalld
+      tags:
+        - hardening
+        - optional
+        - never
+
+    - name: Enable panic mode check
+      ansible.builtin.command: firewall-cmd --query-panic
+      register: panic_status
+      changed_when: false
+      failed_when: false
+      tags:
+        - verify
+        - security
+
+    - name: Display panic mode status
+      ansible.builtin.debug:
+        msg: "Panic mode is {{ 'ENABLED' if panic_status.rc == 0 else 'DISABLED' }}"
+      tags:
+        - verify
+
+  handlers:
+    - name: Reload firewalld
+      ansible.builtin.systemd:
+        name: firewalld
+        state: reloaded
+
+    - name: Restart firewalld
+      ansible.builtin.systemd:
+        name: firewalld
+        state: restarted
