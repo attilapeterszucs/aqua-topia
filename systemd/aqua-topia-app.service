@@ -22,8 +22,8 @@ Environment="TEAM_NUMBER=8"
 Environment="SUBNET=10.1.8.0/24"
 Environment="APP_PORT=8080"
 
-# Pre-start: Clean up any existing container with same name
-ExecStartPre=/usr/bin/podman rm -f aqua-topia-app || true
+# Pre-start: Clean up any existing container with same name (- means ignore failure)
+ExecStartPre=-/usr/bin/podman rm -f aqua-topia-app
 
 # Start command: Run rootless container
 ExecStart=/usr/bin/podman run \
@@ -46,8 +46,8 @@ ExecStart=/usr/bin/podman run \
 # Stop command
 ExecStop=/usr/bin/podman stop --ignore --time 10 aqua-topia-app
 
-# Cleanup on stop
-ExecStopPost=/usr/bin/podman rm -f aqua-topia-app || true
+# Cleanup on stop (- means ignore failure)
+ExecStopPost=-/usr/bin/podman rm -f aqua-topia-app
 
 # Security settings
 NoNewPrivileges=true
