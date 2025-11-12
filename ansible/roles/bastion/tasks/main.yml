@@ -32,14 +32,32 @@
   tags:
     - ssh
 
-- name: Generate SSH key for webserver access
-  ansible.builtin.openssh_keypair:
+- name: Check if SSH key already exists
+  ansible.builtin.stat:
     path: "/home/{{ app_user }}/.ssh/id_rsa"
+  register: ssh_key_stat
+  tags:
+    - ssh
+
+- name: Generate SSH key for webserver access
+  ansible.builtin.command: >
+    ssh-keygen -t rsa -b 4096 -f /home/{{ app_user }}/.ssh/id_rsa
+    -C "{{ app_user }}@bastion8.htf25.qubr.be" -N ""
+  become_user: "{{ app_user }}"
+  when: not ssh_key_stat.stat.exists
+  tags:
+    - ssh
+
+- name: Set SSH key file permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
-    type: rsa
-    size: 4096
-    comment: "{{ app_user }}@bastion8.htf25.qubr.be"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "/home/{{ app_user }}/.ssh/id_rsa", mode: "0600" }
+    - { path: "/home/{{ app_user }}/.ssh/id_rsa.pub", mode: "0644" }
+  when: not ssh_key_stat.stat.exists
   tags:
     - ssh
 
