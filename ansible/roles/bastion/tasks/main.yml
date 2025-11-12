@@ -22,7 +22,7 @@
   tags:
     - podman
 
-- name: Create SSH directory for hacker user
+- name: Create SSH directory for application user
   ansible.builtin.file:
     path: "/home/{{ app_user }}/.ssh"
     state: directory

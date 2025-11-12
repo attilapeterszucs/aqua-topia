@@ -24,8 +24,8 @@ http_port: 80
 https_port: 443
 
 # User Configuration
-app_user: "hacker"
-app_group: "hacker"
+app_user: "ec2-user"
+app_group: "ec2-user"
 
 # TLS Configuration (Mozilla Modern Profile)
 mozilla_tls_profile: "modern"
