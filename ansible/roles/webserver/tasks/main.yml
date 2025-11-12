@@ -297,14 +297,45 @@
     - tls
     - proxy
 
+- name: Find certbot executable path
+  ansible.builtin.command: which certbot
+  register: certbot_path
+  changed_when: false
+  failed_when: false
+  tags:
+    - tls
+    - certbot
+
+- name: Check alternative certbot paths
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: certbot_alternative_paths
+  loop:
+    - /usr/local/bin/certbot
+    - /usr/bin/certbot
+    - ~/.local/bin/certbot
+  when: certbot_path.rc != 0
+  tags:
+    - tls
+    - certbot
+
+- name: Set certbot binary path
+  ansible.builtin.set_fact:
+    certbot_bin: "{{ certbot_path.stdout if certbot_path.rc == 0 else '/usr/local/bin/certbot' }}"
+  tags:
+    - tls
+    - certbot
+
 - name: Request Let's Encrypt certificate via HTTP-01 challenge
   ansible.builtin.command: >
-    certbot certonly --standalone --non-interactive --agree-tos
+    {{ certbot_bin }} certonly --standalone --non-interactive --agree-tos
     --email {{ certbot_email }}
     --domains {{ domain }}
     --http-01-port {{ http_port }}
   args:
     creates: "{{ cert_path }}/fullchain.pem"
+  when: certbot_path.rc == 0 or certbot_alternative_paths.results | selectattr('stat.exists') | list | length > 0
+  ignore_errors: true
   tags:
     - tls
     - certbot
@@ -314,6 +345,16 @@
     name: certbot-renew.timer
     enabled: true
     state: started
+  when: certbot_path.rc == 0 or certbot_alternative_paths.results | selectattr('stat.exists') | list | length > 0
+  ignore_errors: true
+  tags:
+    - tls
+    - certbot
+
+- name: Check if certificate was created
+  ansible.builtin.stat:
+    path: "{{ cert_path }}/fullchain.pem"
+  register: cert_created
   tags:
     - tls
     - certbot
@@ -323,7 +364,7 @@
     path: "{{ cert_path }}"
     state: directory
     mode: '0755'
-  when: cert_path is defined
+  when: cert_created.stat.exists
   tags:
     - tls
 
