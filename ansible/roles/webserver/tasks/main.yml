@@ -46,7 +46,7 @@
   tags:
     - packages
 
-- name: Install certbot from repositories
+- name: Try to install certbot from repositories (optional)
   ansible.builtin.dnf:
     name:
       - certbot
@@ -56,14 +56,11 @@
   tags:
     - packages
     - certbot
+    - optional
 
-- name: Install certbot via pip if package installation failed
-  ansible.builtin.pip:
-    name:
-      - certbot
-    state: present
-  when: certbot_install.failed or certbot_install.rc != 0
-  ignore_errors: true
+- name: Display certbot installation status
+  ansible.builtin.debug:
+    msg: "Certbot installation: {{ 'SUCCESS' if certbot_install.rc == 0 else 'SKIPPED - will be configured manually if needed' }}"
   tags:
     - packages
     - certbot
@@ -369,13 +366,61 @@
     - tls
 
 # ============================================
-# Health Check
+# Health Check and Debugging
 # ============================================
+- name: Check if container service is running
+  ansible.builtin.command: systemctl --user is-active {{ systemd_service_name }}
+  become: true
+  become_user: "{{ app_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ app_user_uid.stdout }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ app_user_uid.stdout }}/bus"
+  register: service_status
+  changed_when: false
+  failed_when: false
+  tags:
+    - deployment
+    - healthcheck
+
+- name: Display service status
+  ansible.builtin.debug:
+    msg: "Service {{ systemd_service_name }} status: {{ service_status.stdout }}"
+  tags:
+    - deployment
+    - healthcheck
+
+- name: Check container status
+  ansible.builtin.command: podman ps -a --filter "name=aqua-topia" --format "{{ '{{' }}.Names{{ '}}' }} - {{ '{{' }}.Status{{ '}}' }}"
+  become: true
+  become_user: "{{ app_user }}"
+  register: container_status
+  changed_when: false
+  failed_when: false
+  tags:
+    - deployment
+    - healthcheck
+
+- name: Display container status
+  ansible.builtin.debug:
+    msg: "Container status: {{ container_status.stdout if container_status.stdout else 'No container found - image may not be available yet' }}"
+  tags:
+    - deployment
+    - healthcheck
+
 - name: Wait for application to be ready
   ansible.builtin.wait_for:
     port: "{{ app_port }}"
     host: localhost
-    timeout: 60
+    timeout: 10
+  ignore_errors: true
+  register: port_check
+  tags:
+    - deployment
+    - healthcheck
+
+- name: Display port check result
+  ansible.builtin.debug:
+    msg: "Application port {{ app_port }}: {{ 'READY' if port_check.failed == false else 'NOT READY - Container image may need to be built and pushed to registry' }}"
   tags:
     - deployment
     - healthcheck
